@@ -1,25 +1,29 @@
 # dsh-artex
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that puts an
-[ARTEX](https://github.com/RuoJi6/ARTEX) console in the Web GUI sidebar.
+[![ci](https://github.com/pandabalckpink/dsh-artex/actions/workflows/ci.yml/badge.svg)](https://github.com/pandabalckpink/dsh-artex/actions/workflows/ci.yml)
 
-- **Sidebar entry + panel** — one click opens the ARTEX console inside DSH (iframe on the
-  ARTEX origin, so its own login/session stay intact).
+Put an [ARTEX](https://github.com/RuoJi6/ARTEX) console in the
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) Web GUI sidebar.
+
+![ARTEX panel inside the DSH Web GUI](docs/screenshot.png)
+
+- **Sidebar entry + panel** — one click opens the ARTEX console inside DSH. The panel is an
+  iframe on the ARTEX origin, so ARTEX's own login, cookies and routes keep working.
 - **Host half** — probes the ARTEX server, optionally starts and supervises it
   (`managed: true`), and publishes the address the panel embeds at `GET /artex/info`.
-- **MCP wiring is not part of this package** — pair it with `@deepseek-ai/dsh-mcp-client`
-  pointed at `<baseUrl>/mcp` and the agent gets ARTEX's tools as `mcp__artex__*`.
+- **MCP wiring is separate** — pair it with `@deepseek-ai/dsh-mcp-client` pointed at
+  `<baseUrl>/mcp` and the agent gets ARTEX's tools as `mcp__artex__*`.
 
 ## Install
 
-Copy the package into a profile and add two Loader entries to the profile's
-`cordis.patch.yml`:
-
 ```bash
-PROFILE="${DSH_HOME:-$HOME/.dsh}/profiles/web"
-mkdir -p "$PROFILE/node_modules"
-cp -r . "$PROFILE/node_modules/dsh-artex"
+git clone https://github.com/pandabalckpink/dsh-artex.git
+cd dsh-artex
+ARTEX_MCP_TOKEN=artex_mcp_... ./install.sh ~/.dsh/profiles/web
 ```
+
+`install.sh` copies the package into the profile's `node_modules` and appends the Loader
+entries to `cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -38,7 +42,12 @@ cp -r . "$PROFILE/node_modules/dsh-artex"
           Authorization: 'Bearer artex_mcp_...'
 ```
 
-Restart DSH (or let HMR recompose) and the entry appears in the sidebar.
+Options: `--managed` lets DSH start and stop ARTEX itself, `--no-mcp` installs only the
+panel, `--base-url` and `--token` override the defaults. Restart DSH (or let HMR recompose)
+and the entry appears in the sidebar.
+
+Manual install is the same two steps: copy the package into `<profile>/node_modules/dsh-artex`
+and add the entries above.
 
 ## Config
 
@@ -53,8 +62,8 @@ Restart DSH (or let HMR recompose) and the entry appears in the sidebar.
 | `healthPath` | `/api/health` | readiness probe |
 | `startupTimeoutMs` | `30000` | how long a managed start may take |
 
-No schema is exported, so the values above are merged over the defaults at apply time —
-a profile entry may override any of them.
+No schema is exported, so these values are merged over the defaults at apply time — a
+profile entry may override any of them.
 
 ## How it works
 
@@ -65,19 +74,28 @@ GET /artex/info (host route) ──► { url, ok, managed, mcpUrl }
 
 - The browser half registers `sidebar.panellist` and the `main` keyed slot through
   `ctx.slots.inject`, so both follow late slot declaration and teardown.
-- The panel reads its target from `/artex/info` at mount time; the route is served by the
-  host half through `ctx.webServer.register`.
-- Embedding is cross-origin but *same-site* when both run on `127.0.0.1`, so ARTEX's
-  `SameSite=Lax` session cookie keeps working. Serving DSH and ARTEX from **different
-  sites** would break that cookie and loop on `/login`.
+- The panel reads its target from `/artex/info` when it mounts; the host half serves that
+  route through `ctx.webServer.register`.
+- Embedding is cross-origin but *same-site* while both run on `127.0.0.1`, so ARTEX's
+  `SameSite=Lax` session cookie keeps working. Serving DSH and ARTEX from **different sites**
+  would drop that cookie and loop on `/login`.
 
 ## Notes
 
 - ARTEX sets no `X-Frame-Options`, so the iframe is allowed. Do not point this at a server
   that forbids framing.
 - The MCP bearer token is a long-lived credential that can create tasks; keep the profile
-  file private.
+  file private and never commit it.
 - Requires a DSH build with the client module system (`dsh.client` in `package.json`).
+
+## Development
+
+```bash
+node scripts/check.mjs   # manifest contract, bundle registration, parsing, secret scan
+bash -n install.sh       # shell syntax
+```
+
+CI runs both on every push and pull request.
 
 ## License
 
